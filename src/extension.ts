@@ -7,11 +7,23 @@ import { getLocalIp, IWatchFileConfig, loadWorkspaceConfig, toArray, toNumber } 
 const clients = new Set();
 let server: Server;
 let statusBarItem: vscode.StatusBarItem;
-const statusBarItemText = '$(code) watch';
+const statusBarItemText = '$(broadcast) watch';
 const watchFileConfig: IWatchFileConfig = {
   watchFileType: ['js', 'html', 'css'],
   port: 6006,
   localIp: getLocalIp(),
+};
+
+const statusBarItemTextChange = (state?: 'on' | 'off' | 'error') => {
+  if (state === 'on') {
+    statusBarItem.text = `$(watch) watch(${clients.size})`;
+  } else if (state === 'off') {
+    statusBarItem.text = `$(broadcast) watch`;
+  } else if (state === 'error') {
+    statusBarItem.text = `$(error) watch`;
+  } else {
+    statusBarItem.text = statusBarItemText;
+  }
 };
 
 const startServer = async () => {
@@ -60,23 +72,25 @@ const startServer = async () => {
 
         clients.add(res);
         // console.log(`现有 ${clients.size} 个连接`);
-        statusBarItem.text = `${statusBarItemText}(${clients.size})`;
+        statusBarItemTextChange('on');
 
         // 4. 监听客户端断开连接，清理资源
         req.on('close', () => {
           clients.delete(res);
           res.end(); // 关闭响应
           // console.log(`现有 ${clients.size} 个连接`);
-          statusBarItem.text = `${statusBarItemText}(${clients.size})`;
+          statusBarItemTextChange('on');
           // console.log('客户端断开连接');
         });
       });
 
       server.listen(watchFileConfig.port, () => {
         resolve(true);
+        statusBarItemTextChange('on');
         console.log(`SSE 服务运行在 http://localhost:${watchFileConfig.port}/sse`);
       });
     } catch (error) {
+      statusBarItemTextChange('error');
       reject();
     }
   });
@@ -94,7 +108,9 @@ const stopServer = async () => {
         // console.log("Server closed successfully");
         // process.exit(0); // 正常退出
       });
+      clients.clear();
       resolve(true);
+      statusBarItemTextChange('off');
     } catch (error) {
       reject();
     }
@@ -109,12 +125,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // ========== 2. 配置状态栏样式和内容 ==========
-  statusBarItem.text = statusBarItemText; // 文本 + 内置图标（tag 是标签图标）
+  statusBarItemTextChange();
   const tooltip = new vscode.MarkdownString(
     `
 ## watch-file-refresh-page
 ---
-- [$(refresh)刷新缓存](command:watch-file-refresh-page.restart)
+- [$(refresh) 重启服务](command:watch-file-refresh-page.restart)
+- [$(debug-stop) 关闭服务](command:watch-file-refresh-page.stop)
+- [$(copy) 复制代码](command:watch-file-refresh-page.copy)
     `,
     true
   );
@@ -122,10 +140,37 @@ export async function activate(context: vscode.ExtensionContext) {
   tooltip.isTrusted = true;
 
   statusBarItem.tooltip = tooltip;
-  statusBarItem.command = 'watch-file-refresh-page.restart'; // 点击触发的命令
+  statusBarItem.command = 'watch-file-refresh-page.clickStatusBar'; // 点击触发的命令
 
   // ========== 3. 显示状态栏 ==========
   statusBarItem.show();
+
+  const clickDisposable = vscode.commands.registerCommand('watch-file-refresh-page.clickStatusBar', () => {
+    // 弹出带命令的快速选择菜单
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.title = 'watch-file-refresh-page';
+    quickPick.items = [{ label: '重启服务' }, { label: '关闭服务' }, { label: '复制代码' }];
+    // quickPick.title = 'web components vscode';
+    quickPick.onDidChangeSelection((selection) => {
+      if (selection[0]) {
+        switch (selection[0].label) {
+          case '重启服务':
+            vscode.commands.executeCommand('watch-file-refresh-page.restart');
+            break;
+          case '关闭服务':
+            vscode.commands.executeCommand('watch-file-refresh-page.stop');
+            break;
+          case '复制代码':
+            vscode.commands.executeCommand('watch-file-refresh-page.copy');
+            break;
+        }
+        // vscode.commands.executeCommand(selection[0].command!);
+        quickPick.dispose();
+      }
+    });
+    quickPick.onDidHide(() => quickPick.dispose());
+    quickPick.show();
+  });
 
   // ========== 4. 注册状态栏点击的自定义命令 ==========
   const refreshCommand = vscode.commands.registerCommand('watch-file-refresh-page.restart', async () => {
@@ -136,10 +181,35 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
           await stopServer();
           await startServer();
-        } catch (error) {}
-        statusBarItem.text = statusBarItemText;
+          vscode.window.showInformationMessage('服务重启成功');
+        } catch (error) {
+          statusBarItemTextChange('error');
+        }
       }
     );
+  });
+
+  const stopCommand = vscode.commands.registerCommand('watch-file-refresh-page.stop', async () => {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在关闭服务...' },
+      async () => {
+        try {
+          await stopServer();
+          vscode.window.showInformationMessage('服务关闭成功');
+        } catch (error) {
+          statusBarItemTextChange('error');
+        }
+      }
+    );
+  });
+
+  const copyCommand = vscode.commands.registerCommand('watch-file-refresh-page.copy', async () => {
+    await vscode.env.clipboard.writeText(`{
+  if (['127.0.0.1', 'localhost', '${watchFileConfig.localIp}'].includes(location.hostname)) {
+    new EventSource('http://${watchFileConfig.localIp}:${watchFileConfig.port}/sse').onmessage = (e) => location.reload();
+  }
+}`);
+    vscode.window.showInformationMessage('复制成功');
   });
 
   if (!server) {
@@ -171,7 +241,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(refreshCommand);
+  context.subscriptions.push(refreshCommand, copyCommand, stopCommand);
 }
 
 // This method is called when your extension is deactivated

@@ -1,8 +1,16 @@
 {
   "name": "watch-file-refresh-page",
   "displayName": "watch-file-refresh-page",
-  "description": "",
+  "description": "原生 js 项目, 监听文件(html, css, js)修改, 通过 SSE 通知前端, 实现自动刷新页面",
   "version": "0.0.1",
+  "publisher": "ZhengWei513",
+  "author": {
+    "name": "ZhengWei513"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/j787701730/watch-file-refresh-page"
+  },
   "engines": {
     "vscode": "^1.107.0"
   },
