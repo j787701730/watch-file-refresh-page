@@ -1,6 +1,4 @@
-import { readFileSync } from 'fs';
 import { networkInterfaces } from 'node:os';
-import { join } from 'path';
 import * as vscode from 'vscode';
 
 /** 判断是数字 */
@@ -28,34 +26,19 @@ export type IWatchFileConfig = {
   watchFileType?: string[];
   port?: number;
   localIp?: string;
+  autoStart?: boolean;
 };
 
 /**
- * 读取工作区配置文件
+ * 读取工作区配置项
+ * @param section 配置项路径（如 "editor.fontSize"）
+ * @param folder 目标工作区文件夹（可选，默认当前激活工作区）
  */
-export async function loadWorkspaceConfig(): Promise<IWatchFileConfig> {
-  // 获取当前工作区根目录（无工作区时返回 undefined）
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders) {
-    // vscode.window.showInformationMessage('未检测到工作区，使用默认配置');
-    return {};
-  }
+export function getWorkspaceSetting(section = 'watchFile.config', folder?: vscode.WorkspaceFolder): IWatchFileConfig {
+  // 获取指定工作区的配置对象
 
-  const workspaceRoot = workspaceFolders[0].uri.fsPath;
-  const configPath = join(workspaceRoot, 'watch-file-config.json');
-
-  try {
-    // 检查配置文件是否存在
-    await vscode.workspace.fs.stat(vscode.Uri.file(configPath));
-    // 读取配置文件内容
-    const fileContent = readFileSync(configPath, 'utf8');
-    const customConfig = toObject(JSON.parse(fileContent));
-    return customConfig;
-  } catch (error) {
-    //
-    console.log('wwww');
-  }
-  return {};
+  // 读取具体配置项
+  return toObject(vscode.workspace.getConfiguration(section));
 }
 
 // 常见虚拟网卡的名称关键词（可根据实际情况补充）

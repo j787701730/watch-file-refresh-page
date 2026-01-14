@@ -2,7 +2,7 @@
   "name": "watch-file-refresh-page",
   "displayName": "watch-file-refresh-page",
   "description": "原生 js 项目, 监听文件(html, css, js)修改, 通过 SSE 通知前端, 实现自动刷新页面",
-  "version": "0.0.1",
+  "version": "0.0.5",
   "publisher": "ZhengWei513",
   "author": {
     "name": "ZhengWei513"
@@ -11,6 +11,7 @@
   "repository": {
     "url": "https://github.com/j787701730/watch-file-refresh-page"
   },
+  "icon": "./images/icon.png",
   "engines": {
     "vscode": "^1.107.0"
   },
@@ -22,7 +23,21 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": []
+    "commands": [],
+    "configuration": {
+      "title": "watch-file-refresh-page",
+      "properties": {
+        "watchFile.config": {
+          "type": "object",
+          "description": "watch-file-refresh-page 文件监听配置",
+          "default": {
+            "watchFileType": "['html', 'css', 'js']",
+            "port": 6006,
+            "autoStart": false
+          }
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

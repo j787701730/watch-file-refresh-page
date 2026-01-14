@@ -1,11 +1,11 @@
 import { createServer, Server } from 'http';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getLocalIp, IWatchFileConfig, loadWorkspaceConfig, toArray, toNumber } from './util';
+import { getLocalIp, getWorkspaceSetting, IWatchFileConfig, toArray, toNumber } from './util';
 
 /** 连接的客户端 */
 const clients = new Set();
-let server: Server;
+let server: Server | undefined;
 let statusBarItem: vscode.StatusBarItem;
 const statusBarItemText = '$(broadcast) watch';
 const watchFileConfig: IWatchFileConfig = {
@@ -27,17 +27,17 @@ const statusBarItemTextChange = (state?: 'on' | 'off' | 'error') => {
 };
 
 const startServer = async () => {
-  const res = await loadWorkspaceConfig();
+  const res = getWorkspaceSetting();
 
   if (res.watchFileType) {
     watchFileConfig.watchFileType = toArray(res.watchFileType);
   }
-
+  watchFileConfig.autoStart = !!res?.autoStart;
   if (res.port && toNumber(res.port)) {
     watchFileConfig.port = toNumber(res.port);
   }
 
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     try {
       server = createServer((req, res) => {
         // 仅处理 SSE 请求（例如路径为 /sse）
@@ -71,7 +71,6 @@ const startServer = async () => {
         // res.write('data: 连接已建立\n\n');
 
         clients.add(res);
-        // console.log(`现有 ${clients.size} 个连接`);
         statusBarItemTextChange('on');
 
         // 4. 监听客户端断开连接，清理资源
@@ -85,9 +84,14 @@ const startServer = async () => {
       });
 
       server.listen(watchFileConfig.port, () => {
-        resolve(true);
         statusBarItemTextChange('on');
         console.log(`SSE 服务运行在 http://localhost:${watchFileConfig.port}/sse`);
+        resolve();
+      });
+      server.on('error', (err: any) => {
+        vscode.window.showErrorMessage(err.message);
+        server = undefined;
+        statusBarItemTextChange('error');
       });
     } catch (error) {
       statusBarItemTextChange('error');
@@ -98,16 +102,23 @@ const startServer = async () => {
 
 const stopServer = async () => {
   return new Promise((resolve, reject) => {
+    if (!server) {
+      clients.clear();
+      resolve(true);
+      statusBarItemTextChange('off');
+    }
     try {
-      server.close((err: any) => {
-        resolve(true);
+      server?.close((err: any) => {
+        statusBarItemTextChange('error');
         if (err) {
           console.error('Server close error:', err);
           // process.exit(1); // 异常退出
         }
         // console.log("Server closed successfully");
         // process.exit(0); // 正常退出
+        resolve(true);
       });
+      server = undefined;
       clients.clear();
       resolve(true);
       statusBarItemTextChange('off');
@@ -130,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext) {
     `
 ## watch-file-refresh-page
 ---
-- [$(refresh) 重启服务](command:watch-file-refresh-page.restart)
+- [$(refresh) 启动服务](command:watch-file-refresh-page.restart)
 - [$(debug-stop) 关闭服务](command:watch-file-refresh-page.stop)
 - [$(copy) 复制代码](command:watch-file-refresh-page.copy)
     `,
@@ -149,12 +160,12 @@ export async function activate(context: vscode.ExtensionContext) {
     // 弹出带命令的快速选择菜单
     const quickPick = vscode.window.createQuickPick();
     quickPick.title = 'watch-file-refresh-page';
-    quickPick.items = [{ label: '重启服务' }, { label: '关闭服务' }, { label: '复制代码' }];
+    quickPick.items = [{ label: '启动服务' }, { label: '关闭服务' }, { label: '复制代码' }];
     // quickPick.title = 'web components vscode';
     quickPick.onDidChangeSelection((selection) => {
       if (selection[0]) {
         switch (selection[0].label) {
-          case '重启服务':
+          case '启动服务':
             vscode.commands.executeCommand('watch-file-refresh-page.restart');
             break;
           case '关闭服务':
@@ -176,12 +187,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const refreshCommand = vscode.commands.registerCommand('watch-file-refresh-page.restart', async () => {
     // 点击事件逻辑：刷新组件缓存
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在重启服务...' },
+      { location: vscode.ProgressLocation.Notification, title: '正在启动服务...' },
       async () => {
         try {
           await stopServer();
           await startServer();
-          vscode.window.showInformationMessage('服务重启成功');
+          // vscode.window.showInformationMessage('服务重启成功');
         } catch (error) {
           statusBarItemTextChange('error');
         }
@@ -195,7 +206,7 @@ export async function activate(context: vscode.ExtensionContext) {
       async () => {
         try {
           await stopServer();
-          vscode.window.showInformationMessage('服务关闭成功');
+          // vscode.window.showInformationMessage('服务关闭成功');
         } catch (error) {
           statusBarItemTextChange('error');
         }
@@ -209,10 +220,11 @@ export async function activate(context: vscode.ExtensionContext) {
     new EventSource('http://${watchFileConfig.localIp}:${watchFileConfig.port}/sse').onmessage = (e) => location.reload();
   }
 }`);
-    vscode.window.showInformationMessage('复制成功');
   });
+  const res = getWorkspaceSetting();
+  watchFileConfig.autoStart = !!res?.autoStart;
 
-  if (!server) {
+  if (watchFileConfig.autoStart) {
     startServer();
   }
 
@@ -225,7 +237,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const filePath = document.fileName; // 获取文件完整路径
 
     // 2. 解析文件后缀（path.extname 会返回带点的后缀，如 .js、.tsx）
-    const fileExt = path.extname(filePath).toLowerCase(); // 转小写统一处理
+    const fileExt = path.extname(filePath).toLocaleLowerCase(); // 转小写统一处理
 
     // 3. 处理无后缀文件
     if (fileExt) {
@@ -235,13 +247,13 @@ export async function activate(context: vscode.ExtensionContext) {
           // ! SSE 格式：data: 内容\n\n（必须严格遵循）
           // const data = `data: ${path} 修改时间: ${new Date().toLocaleTimeString()}\n\n`;
           // 向客户端写入数据
-          res.write(1);
+          res.write(`data: 1\n\n`);
         });
       }
     }
   });
 
-  context.subscriptions.push(refreshCommand, copyCommand, stopCommand);
+  context.subscriptions.push(refreshCommand, copyCommand, stopCommand, clickDisposable);
 }
 
 // This method is called when your extension is deactivated
