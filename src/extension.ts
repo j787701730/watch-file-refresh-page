@@ -16,7 +16,7 @@ const watchFileConfig: IWatchFileConfig = {
 
 const statusBarItemTextChange = (state?: 'on' | 'off' | 'error') => {
   if (state === 'on') {
-    statusBarItem.text = `$(watch) watch(${clients.size})`;
+    statusBarItem.text = `$(watch) watch(${clients.size}):${watchFileConfig.port}`;
   } else if (state === 'off') {
     statusBarItem.text = `$(broadcast) watch`;
   } else if (state === 'error') {
@@ -132,7 +132,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // ========== 1. 创建状态栏项 ==========
   statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left, // 位置：右侧（Left 为左侧）
-    0 // 优先级（数值越大越靠右/左）
+    0, // 优先级（数值越大越靠右/左）
   );
 
   // ========== 2. 配置状态栏样式和内容 ==========
@@ -145,7 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
 - [$(debug-stop) 关闭服务](command:watch-file-refresh-page.stop)
 - [$(copy) 复制代码](command:watch-file-refresh-page.copy)
     `,
-    true
+    true,
   );
 
   tooltip.isTrusted = true;
@@ -196,7 +196,7 @@ export async function activate(context: vscode.ExtensionContext) {
         } catch (error) {
           statusBarItemTextChange('error');
         }
-      }
+      },
     );
   });
 
@@ -210,7 +210,7 @@ export async function activate(context: vscode.ExtensionContext) {
         } catch (error) {
           statusBarItemTextChange('error');
         }
-      }
+      },
     );
   });
 

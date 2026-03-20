@@ -17,5 +17,6 @@
     "source.removeUnusedImports": "explicit"
     // 移除未使用的代码
     // "source.removeUnused": "explicit",
-  }
+  },
+  "liveServer.settings.port": 5501
 }
